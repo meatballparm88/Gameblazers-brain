@@ -49,6 +49,22 @@ main{padding:14px}
 .bar .vv{width:62px;text-align:right;font-size:11.5px;color:var(--mut);flex-shrink:0}
 .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px}
 .toolbar select{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:9px 10px;font-size:14px}
+.fbtn{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:9px 13px;font-size:14px;font-weight:600;white-space:nowrap}
+.fbtn.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.fsheet{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px;margin-bottom:12px;display:flex;flex-direction:column;gap:12px}
+.fsheet .fg2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fl{display:flex;flex-direction:column;gap:5px}
+.fl>span{font-size:10.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--mut)}
+.fl select,.fl input{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:10px;font-size:14px;width:100%}
+.mchips,.vchips{display:flex;gap:7px;flex-wrap:wrap}
+.mc{background:var(--panel2);border:1px solid var(--line);border-radius:18px;padding:8px 13px;font-size:13px;color:var(--mut);min-width:48px;text-align:center}
+.mc.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.vc{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px 13px;font-size:13px;font-weight:700;color:var(--mut)}
+.vc.v-buy{color:#86efac}.vc.v-watch{color:#93c5fd}.vc.v-fair{color:#fcd34d}.vc.v-avoid{color:#fca5a5}
+.vc.on{color:#fff}.vc.on.v-buy{background:#16a34a;border-color:#16a34a}.vc.on.v-watch{background:#2563eb;border-color:#2563eb}.vc.on.v-fair{background:#b45309;border-color:#b45309}.vc.on.v-avoid{background:#b91c1c;border-color:#b91c1c}.vc.on.v-all{background:var(--acc);border-color:var(--acc)}
+.fclear{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:10px;padding:11px;font-size:14px;font-weight:600}
+.vchip{padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;flex-shrink:0;border:1px solid var(--line)}
+.vchip.v-buy{background:rgba(34,197,94,.16);color:#86efac}.vchip.v-watch{background:rgba(59,130,246,.16);color:#93c5fd}.vchip.v-fair{background:rgba(245,158,11,.14);color:#fcd34d}.vchip.v-avoid{background:rgba(239,68,68,.16);color:#fca5a5}
 .count{font-size:12px;color:var(--mut);margin:2px 2px 10px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:12px 13px;margin-bottom:10px}
 .card .top{display:flex;align-items:flex-start;gap:8px}
@@ -157,11 +173,24 @@ function signal(c){
   if(c.ovr>=80&&c.blend<65)return{s:'BUY',r:'Strong (OVR '+c.ovr+') under tier',m:mv};
   return{s:'HOLD',r:'Stable — monitor',m:mv};
 }
+function median(a){if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y);const m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2;}
+let PERPOINT=1;
+function cardType(c){if(c.fr)return'Franchise';const k=(c.col||'').toLowerCase();if(k.includes('primetime'))return'Primetime';if(k.includes('core'))return'Core';return'Other';}
+function valuation(c){
+  if(c.ovr>0&&c.sal>0){c.fair=c.ovr*c.mult*PERPOINT;c.edge=(c.fair-c.sal)/c.sal;c.edgePct=+(c.edge*100).toFixed(1);c.conf=(c.ovr>=60)?'High':(c.ovr>=25?'Med':'Low');}
+  else{c.fair=null;c.edge=null;c.edgePct=null;c.conf='Low';}
+  if(c.edge==null)c.verdict='FAIR';
+  else if(c.edge>=0.15)c.verdict=(c.exp&&c.days>=0&&c.days<=7)?'WATCH':'BUY';
+  else if(c.edge>=0.03)c.verdict='WATCH';
+  else if(c.edge>-0.12)c.verdict='FAIR';
+  else c.verdict='AVOID';
+}
 function enrich(){
   MAXSAL=Math.max(1,...DATA.map(c=>c.sal));
+  PERPOINT=median(DATA.filter(c=>c.ovr>0&&c.sal>0).map(c=>c.sal/(c.ovr*c.mult)))||1;
   DATA.forEach(c=>{c.est=c.sal*c.mult;c.blend=+(0.6*(c.sal/MAXSAL*100)+0.3*(c.ovr/150*100)+0.1*((c.mult-1)/0.5*100)).toFixed(1);
     c.days=daysTo(c.exp);c.tier=c.blend>=65?'Elite':c.blend>=45?'High':c.blend>=25?'Mid':'Low';
-    c.sig=signal(c);c.url=urlFor(c);c.linked=!!c.url;});
+    valuation(c);c.sig=signal(c);c.url=urlFor(c);c.linked=!!c.url;});
 }
 
 /* persistence */
@@ -260,11 +289,22 @@ function parseNL(raw){
 function money(s){s=s.replace(/[$,\s]/g,'').toLowerCase();let n=parseFloat(s);if(/k$/.test(s))n*=1e3;if(/m$/.test(s))n*=1e6;return isNaN(n)?null:n;}
 
 /* ===== state + render ===== */
-let st={quick:'',sort:'est',dir:-1,nl:null,nlText:'',page:0,per:30};
+let st={quick:'',sort:'est',dir:-1,nl:null,nlText:'',page:0,per:30,
+  fopen:false,conf:'',type:'',team:'',pos:'',verdict:'',mults:[],priceMin:'',priceMax:'',ovrMin:'',ovrMax:''};
 const CHIPS=[['','All'],['exp','Expiring ≤30d'],['fr','Franchise'],['sell','Sell'],['buy','Buy'],['listed','Listed'],['nolink','⚠ No link']];
 function filtered(){
   const nl=st.nl;
   let r=DATA.filter(c=>{
+    if(st.conf&&c.conf!==st.conf)return false;
+    if(st.type&&cardType(c)!==st.type)return false;
+    if(st.team&&c.team!==st.team)return false;
+    if(st.pos&&c.pos!==st.pos)return false;
+    if(st.verdict&&c.verdict!==st.verdict)return false;
+    if(st.mults.length&&!st.mults.includes(c.mult))return false;
+    if(st.priceMin!==''&&c.sal<+st.priceMin)return false;
+    if(st.priceMax!==''&&c.sal>+st.priceMax)return false;
+    if(st.ovrMin!==''&&c.ovr<+st.ovrMin)return false;
+    if(st.ovrMax!==''&&c.ovr>+st.ovrMax)return false;
     if(st.quick==='exp'&&!(c.exp&&c.days>=0&&c.days<=30))return false;
     if(st.quick==='fr'&&!c.fr)return false;
     if(st.quick==='sell'&&c.sig.s!=='SELL')return false;
@@ -274,7 +314,7 @@ function filtered(){
     if(nl&&nl.preds.length&&!nl.preds.every(p=>p(c)))return false;
     return true;});
   const s=(nl&&nl.sort)||st.sort,d=(nl&&nl.sort)?nl.dir:st.dir;
-  r.sort((a,b)=>{let x=a[s],y=b[s];if(s==='days'){x=a.exp?a.days:1e9;y=b.exp?b.days:1e9;}if(typeof x==='string')return d*x.localeCompare(y);return d*((x>y)-(x<y));});
+  r.sort((a,b)=>{let x=a[s],y=b[s];if(s==='days'){x=a.exp?a.days:1e9;y=b.exp?b.days:1e9;}if(s==='edge'){x=a.edge==null?-1e9:a.edge;y=b.edge==null?-1e9:b.edge;}if(typeof x==='string')return d*x.localeCompare(y);return d*((x>y)-(x<y));});
   if(nl&&nl.limit)r=r.slice(0,nl.limit);
   return r;
 }
@@ -287,10 +327,13 @@ function cardHTML(c){
   const go=c.url
     ?'<a class="go" href="'+c.url+'" target="_blank" rel="noopener">Open in GameBlazers ↗</a>'
     :'<button class="go muted" data-find="'+encodeURIComponent(c.player)+'">⚠ No link · Find in GB</button>';
+  const vlabel={BUY:'Buy',WATCH:'Watch',FAIR:'Fair',AVOID:'Avoid'}[c.verdict];
+  const edge=c.edge==null?'<span class="muted">edge —</span>':'<span class="'+(c.edge>=0?'up':'down')+'">'+(c.edge>=0?'+':'')+c.edgePct+'% edge</span>';
   return '<div class="card"><div class="top"><div><div class="nm">'+c.player+'</div>'
     +'<div class="sub">'+c.pos.toUpperCase()+' · '+c.team+' · ×'+c.mult+' · '+c.col+'</div></div>'
-    +'<span class="pill '+c.sig.s.toLowerCase()+'">'+c.sig.s+(c.sig.m==='up'?' ▲':c.sig.m==='down'?' ▼':'')+'</span></div>'
-    +'<div class="meta"><span class="val">'+fmt$(c.est)+' <small>'+c.tier+'</small></span>'
+    +'<span class="vchip v-'+c.verdict.toLowerCase()+'">'+vlabel+'</span></div>'
+    +'<div class="meta"><span class="val">'+fmt$(c.est)+' <small>'+c.tier+'</small></span>'+edge
+    +'<span class="muted" style="font-size:11px">'+c.conf+' conf</span>'
     +(c.fr?'<span class="tag fr">FR</span>':'')+(c.st==='Listed'?'<span class="tag listed">Listed</span>':'')
     +'<span style="flex:1"></span>'+exp+'</div>'+go+'</div>';
 }
@@ -301,14 +344,42 @@ function renderCards(){
   if(st.nl){interp.style.display='block';interp.className='interp'+(st.nl.unmatched?' warn':'');
     interp.textContent=st.nl.unmatched?'Couldn’t map that — try a position, value, or expiry date.':'Showing: '+(st.nl.label.join(' · ')||'all');}
   else interp.style.display='none';
+  const optsT=f=>[...new Set(DATA.map(c=>c[f]))].sort().map(v=>'<option '+(st[f==='team'?'team':'pos']===v?'selected':'')+'>'+v+'</option>').join('');
+  const sheet=st.fopen?(
+    '<div class="fsheet">'
+    +'<div class="fg2">'
+    +'<label class="fl"><span>Confidence</span><select id="fconf">'+['','High','Med','Low'].map(v=>'<option value="'+v+'" '+(st.conf===v?'selected':'')+'>'+(v||'all')+'</option>').join('')+'</select></label>'
+    +'<label class="fl"><span>Type</span><select id="ftype">'+['','Franchise','Primetime','Core','Other'].map(v=>'<option value="'+v+'" '+(st.type===v?'selected':'')+'>'+(v||'all')+'</option>').join('')+'</select></label>'
+    +'<label class="fl"><span>Team</span><select id="fteam"><option value="">all</option>'+optsT('team')+'</select></label>'
+    +'<label class="fl"><span>Position</span><select id="fpos"><option value="">all</option>'+optsT('pos')+'</select></label>'
+    +'</div>'
+    +'<div class="fl"><span>Multiplier</span><div class="mchips">'+[1,1.1,1.2,1.3,1.4,1.5].map(m=>'<span class="mc '+(st.mults.includes(m)?'on':'')+'" data-m="'+m+'">'+m+'x</span>').join('')+'</div></div>'
+    +'<div class="fg2"><label class="fl"><span>Price min</span><input type="number" id="fpmin" inputmode="numeric" placeholder="0" value="'+st.priceMin+'"></label><label class="fl"><span>Price max</span><input type="number" id="fpmax" inputmode="numeric" placeholder="'+MAXSAL+'+" value="'+st.priceMax+'"></label></div>'
+    +'<div class="fg2"><label class="fl"><span>Overall min</span><input type="number" id="fomin" inputmode="numeric" placeholder="0" value="'+st.ovrMin+'"></label><label class="fl"><span>Overall max</span><input type="number" id="fomax" inputmode="numeric" placeholder="150+" value="'+st.ovrMax+'"></label></div>'
+    +'<div class="fl"><span>Verdict</span><div class="vchips">'+[['BUY','Buys'],['WATCH','Watch'],['FAIR','Fair'],['AVOID','Avoid'],['','All']].map(([v,l])=>'<span class="vc v-'+(v||'all').toLowerCase()+' '+(st.verdict===v?'on':'')+'" data-v="'+v+'">'+l+'</span>').join('')+'</div></div>'
+    +'<button class="fclear" id="fclear">Clear all filters</button>'
+    +'</div>'):'';
   $('#cards').innerHTML=
     '<div class="toolbar"><select id="sortSel">'
-    +[['est','Value (high→low)'],['days','Expiring soonest'],['ovr','Overall'],['blend','Blend score'],['player','Player A–Z'],['sal','Salary']].map(([k,l])=>'<option value="'+k+'" '+(st.sort===k?'selected':'')+'>'+l+'</option>').join('')
-    +'</select></div>'
+    +[['edge','Best edge'],['est','Value (high→low)'],['days','Expiring soonest'],['ovr','Overall'],['blend','Blend score'],['player','Player A–Z'],['sal','Salary']].map(([k,l])=>'<option value="'+k+'" '+(st.sort===k?'selected':'')+'>'+l+'</option>').join('')
+    +'</select><button class="fbtn '+(st.fopen?'on':'')+'" id="fToggle">⚙ Filters</button></div>'
+    +sheet
     +'<div class="count">'+f.length.toLocaleString()+' cards · '+fmtK(total)+'</div>'
     +(slice.length?slice.map(cardHTML).join(''):'<div class="empty">No cards match.</div>')
     +(slice.length<f.length?'<button class="showmore" id="more">Show more ('+(f.length-slice.length)+' left)</button>':'');
   $('#sortSel').onchange=e=>{st.sort=e.target.value;st.dir=(e.target.value==='player')?1:(e.target.value==='days'?1:-1);st.page=0;renderCards();};
+  $('#fToggle').onclick=()=>{st.fopen=!st.fopen;renderCards();};
+  const num=(id,k)=>{const el=$('#'+id);if(el)el.onchange=()=>{st[k]=el.value;st.page=0;renderCards();};};
+  if(st.fopen){
+    $('#fconf').onchange=e=>{st.conf=e.target.value;st.page=0;renderCards();};
+    $('#ftype').onchange=e=>{st.type=e.target.value;st.page=0;renderCards();};
+    $('#fteam').onchange=e=>{st.team=e.target.value;st.page=0;renderCards();};
+    $('#fpos').onchange=e=>{st.pos=e.target.value;st.page=0;renderCards();};
+    num('fpmin','priceMin');num('fpmax','priceMax');num('fomin','ovrMin');num('fomax','ovrMax');
+    $('#cards').querySelectorAll('.mc').forEach(ch=>ch.onclick=()=>{const m=+ch.dataset.m;const i=st.mults.indexOf(m);if(i>=0)st.mults.splice(i,1);else st.mults.push(m);st.page=0;renderCards();});
+    $('#cards').querySelectorAll('.vc').forEach(b=>b.onclick=()=>{st.verdict=b.dataset.v;st.page=0;renderCards();});
+    $('#fclear').onclick=()=>{Object.assign(st,{conf:'',type:'',team:'',pos:'',verdict:'',mults:[],priceMin:'',priceMax:'',ovrMin:'',ovrMax:''});st.page=0;renderCards();};
+  }
   const more=$('#more');if(more)more.onclick=()=>{st.page++;renderCards();};
   $('#cards').querySelectorAll('[data-find]').forEach(b=>b.onclick=()=>{const nm=decodeURIComponent(b.dataset.find);copyText(nm);window.open('https://app.gameblazers.com/marketplace?search='+encodeURIComponent(nm),'_blank');toast('Copied “'+nm+'” — search GB, open the card, copy its link.');});
 }
@@ -359,7 +430,7 @@ function renderMarket(){
     +'<div class="sec"><h3>Top fallers</h3>'+(fallers.map(row).join('')||'<div class="empty">None.</div>')+'</div>';
 }
 function renderAll(){enrich();setPrev();renderChips();renderHome();renderCards();renderSignals();renderMarket();
-  $('#sub').textContent='— '+DATA.length.toLocaleString()+' cards';}
+  $('#sub').textContent='v4 · '+DATA.length.toLocaleString()+' cards';}
 
 let curView='cards';
 function go(v){curView=v;document.querySelectorAll('.view').forEach(s=>s.classList.toggle('active',s.id===v));
